@@ -15,7 +15,7 @@ def importWaveSurfer(dirName, h5fileName, samplingFreq = 20e3):
     wsDf['time'] = time
     return wsDf
 
-def alignPosDf(posDf, wsDf):
+def alignUnityWS(posDf, wsDf):
     #downsample wavesurfer file to unity frame rate
     wsDf_ds = wsDf.iloc[::int(np.round(np.nanmean(posDf['time'].diff())/np.nanmean(wsDf['time'].diff()),1))].copy().reset_index(drop=True)
     #pad downsampled wavesurfer with 0s and then use phase cross correlation to compute shift
@@ -24,8 +24,8 @@ def alignPosDf(posDf, wsDf):
     if shift>0:
         raise ValueError('Wavesurfer file seems to have started before unity')
     else:
-        posDf = posDf.iloc[shift:].copy().reset_index(drop=True)
-    return posDf
+        posDf = posDf.iloc[-int(np.round(shift)):,:].copy().reset_index(drop=True)
+    return posDf, wsDf_ds
         
 
     
