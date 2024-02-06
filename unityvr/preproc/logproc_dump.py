@@ -258,34 +258,20 @@ def objDfFromLog(dat):
 
 def posDfFromLog(dat):
     # get info about camera position in vr
-    collision = np.any(np.array(['attemptedTranslation' in dat[i] for i in range(len(dat))]))
-    if not collision:
-        matching = [s for s in dat if "worldPosition" in s]
-        entries = [None]*len(matching)
-        for entry, match in enumerate(matching):
-            framedat = {'frame': match['frame'],
-                            'time': match['timeSecs'],
-                            'x': match['worldPosition']['x'],
-                            'y': match['worldPosition']['z'], #axes are named differently in Unity
-                            'angle': (-match['worldRotationDegs']['y'])%360, #flip due to left handed convention in Unity
-                           }
-            entries[entry] = pd.Series(framedat).to_frame().T
-    
-    else:     
-        matching = [s for s in dat if "attemptedTranslation" in s]
-        entries = [None]*len(matching)
-        for entry, match in enumerate(matching):
-            framedat = {'frame': match['frame'],
-                            'time': match['timeSecs'],
-                            'x': match['worldPosition']['x'],
-                            'y': match['worldPosition']['z'], #axes are named differently in Unity
-                            'angle': (-match['worldRotationDegs']['y'])%360, #flip due to left handed convention in Unity
-                            'dx':match['actualTranslation']['x'],
-                            'dy':match['actualTranslation']['z'],
-                            'dxattempt': match['attemptedTranslation']['x'],
-                            'dyattempt': match['attemptedTranslation']['z']
-                           }
-            entries[entry] = pd.Series(framedat).to_frame().T
+    matching = [s for s in dat if "attemptedTranslation" in s]
+    entries = [None]*len(matching)
+    for entry, match in enumerate(matching):
+        framedat = {'frame': match['frame'],
+                        'time': match['timeSecs'],
+                        'x': match['worldPosition']['x'],
+                        'y': match['worldPosition']['z'], #axes are named differently in Unity
+                        'angle': (-match['worldRotationDegs']['y'])%360, #flip due to left handed convention in Unity
+                        'dx':match['actualTranslation']['x'],
+                        'dy':match['actualTranslation']['z'],
+                        'dxattempt': match['attemptedTranslation']['x'],
+                        'dyattempt': match['attemptedTranslation']['z']
+                       }
+        entries[entry] = pd.Series(framedat).to_frame().T
     print('correcting for Unity angle convention.')
 
     if len(entries) > 0:
