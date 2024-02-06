@@ -30,10 +30,17 @@ def position(uvrDat, derive = True, rotate_by = None, filter_date = '2021-09-08'
         print('correcting for Unity angle convention.')
         posDf['angle'] = (-posDf['angle'])%360
         uvrDat.metadata['angle_convention'] = "right-handed"
+        
+    if 'dx' not in posDf:
+            #chad doesn't use collision handling (revisit why we use at all)
+            posDf['dx'] = np.hstack([0,np.diff(posDf['x'])])
+            posDf['dy'] = np.hstack([0,np.diff(posDf['y'])])
+            posDf['dxattempt'] = np.hstack([0,np.diff(posDf['x'])])
+            posDf['dyattempt'] = np.hstack([0,np.diff(posDf['y'])])
 
     #rotate
     if rotate_by is not None:
-        posDf['x'], posDf['y'] = rotation_deg(posDf['x'],posDf['y'],rotate_by)
+        posDf['x'], posDf['y'] = rotation_deg(posDf['x'],posDf['y'],rotate_by)        
         posDf['dx'], posDf['dy'] = rotation_deg(posDf['dx'],posDf['dy'],rotate_by)
         posDf['dxattempt'], posDf['dyattempt'] = rotation_deg(posDf['dxattempt'],posDf['dyattempt'],rotate_by)
         posDf['angle'] = (posDf['angle']+rotate_by)%360
