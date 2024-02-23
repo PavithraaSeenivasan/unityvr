@@ -68,6 +68,9 @@ def shape(posDf, step = None, interp='linear', stitch=False, plot = False, plots
     shapeDf['dy'] = np.diff(shapeDf['y'],prepend=0)
     shapeDf['ds'] = np.sqrt((shapeDf['dx']**2)+(shapeDf['dy']**2))
     shapeDf['s'] = np.cumsum(shapeDf['ds'])
+    
+    shapeDf['trial'] = posDf['trial'].values[:len(shapeDf)]
+    shapeDf['trial_name'] = posDf['trial_name'].values[:len(shapeDf)]
 
     shapeDf = carryAttrs(shapeDf,posDf)
 

@@ -3,6 +3,7 @@ import skimage as ski
 import pandas as pd
 import numpy as np
 import scipy as sp
+import stumpy
 
 
 def importWaveSurfer(dirName, h5fileName, samplingFreq = 20e3):
@@ -15,7 +16,7 @@ def importWaveSurfer(dirName, h5fileName, samplingFreq = 20e3):
     wsDf['time'] = time
     return wsDf
 
-def alignUnityWS(posDf, wsDf):
+'''def alignUnityWS(posDf, wsDf):
     #downsample wavesurfer file to unity frame rate
     wsDf_ds = wsDf.iloc[::int(np.round(np.nanmean(posDf['time'].diff())/np.nanmean(wsDf['time'].diff()),1))].copy().reset_index(drop=True)
     #pad downsampled wavesurfer with 0s and then use phase cross correlation to compute shift
@@ -26,6 +27,21 @@ def alignUnityWS(posDf, wsDf):
     else:
         posDf = posDf.iloc[-int(np.round(shift)):,:].copy().reset_index(drop=True)
     return posDf, wsDf_ds
+    '''
+
+def alignUnityWS(posDf, wsDf, smoothing_win = 5000):
+    #downsample wavesurfer file to unity frame rate
+    wsDf_ds = wsDf.iloc[::int(np.round(np.nanmean(posDf['time'].diff())/np.nanmean(wsDf['time'].diff()),1))].copy().reset_index(drop=True)
+    #pad downsampled wavesurfer with 0s and then use stumpy to compute shift
+
+    distance_profile = stumpy.mass(wsDf_ds['Arena Heading'], 360-posDf['angle'])
+    shift = np.argmin(distance_profile)
+    print(shift)
+    if shift<0:
+        raise ValueError('Wavesurfer file seems to have started before unity')
+    else:
+        posDf = posDf.iloc[-int(np.round(shift)):,:].copy().reset_index(drop=True)
+    return posDf, wsDf_ds, shift
         
 
     
