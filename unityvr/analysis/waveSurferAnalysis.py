@@ -4,6 +4,7 @@ import pandas as pd
 import numpy as np
 import scipy as sp
 import stumpy
+import os
 
 
 def importWaveSurfer(dirName, h5fileName, samplingFreq = 20e3):
@@ -31,8 +32,10 @@ def importWaveSurfer(dirName, h5fileName, samplingFreq = 20e3):
 
 def alignUnityWS(posDf, wsDf, smoothing_win = 5000):
     #downsample wavesurfer file to unity frame rate
+
     wsDf_ds = wsDf.iloc[::int(np.round(np.nanmean(posDf['time'].diff())/np.nanmean(wsDf['time'].diff()),1))].copy().reset_index(drop=True)
     #pad downsampled wavesurfer with 0s and then use stumpy to compute shift
+
 
     distance_profile = stumpy.mass(wsDf_ds['Arena Heading'], 360-posDf['angle'])
     shift = np.argmin(distance_profile)
@@ -41,7 +44,19 @@ def alignUnityWS(posDf, wsDf, smoothing_win = 5000):
         raise ValueError('Wavesurfer file seems to have started before unity')
     else:
         posDf = posDf.iloc[-int(np.round(shift)):,:].copy().reset_index(drop=True)
+        
     return posDf, wsDf_ds, shift
+
+def find_files_by_extension(dirName, extension1):
+    file_list = []
+    for root, dirs, files in os.walk(dirName):
+        for file in files:
+            if file.endswith(extension1):
+                file_list.append(file)
+                
+    # Sort files by date created
+    file_list.sort(key=lambda x: os.path.getctime(os.path.join(dirName, x)))
+    return file_list
         
 
     
