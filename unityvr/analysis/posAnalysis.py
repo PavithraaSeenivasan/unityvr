@@ -25,12 +25,6 @@ def position(uvrDat, derive = True, rotate_by = None, filter_date = '2021-09-08'
     posDf = uvrDat.posDf
 
     #angle correction
-    #this is required only for data that was preprocessed before the filter_date
-    if (np.datetime64(uvrDat.metadata['date'])<=np.datetime64(filter_date)) & ('angle_convention' not in uvrDat.metadata):
-        print('correcting for Unity angle convention.')
-        posDf['angle'] = (-posDf['angle'])%360
-        uvrDat.metadata['angle_convention'] = "right-handed"
-        
     if 'dx' not in posDf:
             #chad doesn't use collision handling (revisit why we use at all)
             posDf['dx'] = np.hstack([0,np.diff(posDf['x'])])
@@ -167,3 +161,28 @@ def getTimeDf(uvrDat, trialDir, posDf = None, imaging = False, rate = 9.5509):
     timeDf = carryAttrs(timeDf,posDf)
     
     return timeDf
+
+
+def rotate_point(point, angle):
+    """
+    Rotate a point (x, y) counterclockwise by a given angle (in degrees) around the origin.
+    """
+    x, y = point
+    theta = np.radians(angle)
+    cos_theta = np.cos(theta)
+    sin_theta = np.sin(theta)
+    rotated_x = x * cos_theta - y * sin_theta
+    rotated_y = x * sin_theta + y * cos_theta
+    return rotated_x, rotated_y
+
+def rotate_trajectory(trajectory, angle):
+    """
+    Rotate a 2D trajectory (a list of points) counterclockwise by a given angle (in degrees) around the origin.
+    """
+    rotated_trajectory = []
+    for point in trajectory:
+        rotated_point = rotate_point(point, angle)
+        rotated_trajectory.append(rotated_point)
+    return rotated_trajectory
+
+

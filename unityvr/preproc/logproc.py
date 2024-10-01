@@ -6,10 +6,25 @@ from dataclasses import dataclass, asdict
 from os import mkdir, makedirs
 from os.path import sep, isfile, exists
 import json
+import os
+
+from unityvr.analysis import posAnalysis, shapeAnalysis
+
+
+def find_files_by_extension(dirName, extension1):
+    file_list = []
+    for root, dirs, files in os.walk(dirName):
+        for file in files:
+            if file.endswith(extension1):
+                file_list.append(file)
+                
+    #Sort files by date created
+    file_list.sort(key=lambda x: os.path.getmtime(os.path.join(dirName, x)))
+    return file_list
 
 #dataframe column defs
 objDfCols = ['name','collider','px','py','pz','rx','ry','rz','sx','sy','sz']
-
+laserDfCols = ['frame', 'time', 'laser']
 posDfCols = ['frame','time','x','y','angle']
 ftDfCols = ['frame','ficTracTReadMs','ficTracTWriteMs','dx','dy','dz']
 dtDfCols = ['frame','time','dt']
@@ -29,6 +44,7 @@ class unityVRexperiment:
 
     # timeseries data
     posDf: pd.DataFrame = pd.DataFrame(columns=posDfCols)
+    laserDf: pd.DataFrame = pd.DataFrame(columns=laserDfCols)
     ftDf: pd.DataFrame = pd.DataFrame(columns=ftDfCols)
     nidDf: pd.DataFrame = pd.DataFrame(columns=nidDfCols)
     texDf: pd.DataFrame = pd.DataFrame(columns=texDfCols)
@@ -64,6 +80,7 @@ class unityVRexperiment:
 
         # save dataframes
         self.objDf.to_csv(sep.join([savepath,'objDf.csv']))
+        self.laserDf.to_csv(sep.join([savepath,'laserDf.csv']))
         self.posDf.to_csv(sep.join([savepath,'posDf.csv']))
         self.ftDf.to_csv(sep.join([savepath,'ftDf.csv']))
         self.nidDf.to_csv(sep.join([savepath,'nidDf.csv']))
@@ -95,9 +112,11 @@ def convertJsonToPandas(dirName,fileName,saveDir, computePDtrace):
     objDf.to_csv(sep.join([savepath,'objDf.csv']))
 
     # construct and save position and velocity dataframes
-    posDf, ftDf, nidDf = timeseriesDfFromLog(dat, computePDtrace)
+    posDf, laserDf, ftDf, nidDf = timeseriesDfFromLog(dat, computePDtrace)
     posDf.to_csv(sep.join([savepath,'posDf.csv']))
     del posDf 
+    laserDf.to_csv(sep.join([savepath,'laserDf.csv']))
+    del laserDf 
     ftDf.to_csv(sep.join([savepath,'ftDf.csv']))
     del ftDf 
     nidDf.to_csv(sep.join([savepath,'nidDf.csv']))
@@ -120,11 +139,11 @@ def constructUnityVRexperiment(dirName,fileName):
 
     metadat = makeMetaDict(dat, fileName)
     objDf = objDfFromLog(dat)
-    posDf, ftDf, nidDf = timeseriesDfFromLog(dat, computePDtrace=True)
+    posDf, laserDf, ftDf, nidDf = timeseriesDfFromLog(dat, computePDtrace=True)
     texDf = texDfFromLog(dat)
     vidDf = vidDfFromLog(dat)
 
-    uvrexperiment = unityVRexperiment(metadata=metadat,posDf=posDf,ftDf=ftDf,nidDf=nidDf,objDf=objDf,texDf=texDf, vidDf=vidDf)
+    uvrexperiment = unityVRexperiment(metadata=metadat,posDf=posDf, laserDf=laserDf,ftDf=ftDf,nidDf=nidDf,objDf=objDf,texDf=texDf, vidDf=vidDf)
 
     return uvrexperiment
 
@@ -163,7 +182,7 @@ def loadUVRData(savepath):
         nidDf = pd.DataFrame()
         #Nidaq dataframe may not have been extracted from the raw data due to memory/time constraints
 
-    uvrexperiment = unityVRexperiment(metadata=metadat,posDf=posDf,ftDf=ftDf,nidDf=nidDf,\
+    uvrexperiment = unityVRexperiment(metadata=metadat,posDf=posDf,laserDf=laserDf,ftDf=ftDf,nidDf=nidDf,\
                                       objDf=objDf,texDf=texDf,shapeDf=shapeDf,timeDf=timeDf, vidDf=vidDf)
 
     return uvrexperiment
@@ -279,15 +298,30 @@ def posDfFromLog(dat):
                             'time': match['timeSecs'],
                             'x': match['worldPosition']['x'],
                             'y': match['worldPosition']['z'], #axes are named differently in Unity
+                            #'angle': match['worldRotationDegs']['y'],
                             'angle': (-match['worldRotationDegs']['y'])%360, #flip due to left handed convention in Unity
                             'dx':match['actualTranslation']['x'],
                             'dy':match['actualTranslation']['z'],
                             'dxattempt': match['attemptedTranslation']['x'],
-                            'dyattempt': match['attemptedTranslation']['z']
+                            'dyattempt': match['attemptedTranslation']['z'],
                            }
             entries[entry] = pd.Series(framedat).to_frame().T
     print('correcting for Unity angle convention.')
 
+    if len(entries) > 0:
+        return  pd.concat(entries,ignore_index = True)
+    else:
+        return pd.DataFrame()
+
+def laserDfFromLog(dat):
+    matching = [s for s in dat if "VoltageWritten" in s]
+    entries = [None]*len(matching)
+    for entry, match in enumerate(matching):
+        framedat = {'frame': match['frame'],
+                    'time': match['timeSecs'],
+                    'laser': match['VoltageWritten']
+                       }
+        entries[entry] = pd.Series(framedat).to_frame().T
     if len(entries) > 0:
         return  pd.concat(entries,ignore_index = True)
     else:
@@ -338,11 +372,13 @@ def pdDfFromLog(dat, computePDtrace):
             framedat = {'frame': match['frame'],
                         'time': match['timeSecs'],
                         'pdsig': match['tracePD'],
-                        'imgfsig': match['imgFrameTrigger']}
+                        'imgfsig': match['imgFrameTrigger'],
+                        }
         else:
             framedat = {'frame': match['frame'],
                     'time': match['timeSecs'],
-                    'imgfsig': match['imgFrameTrigger']}
+                    'imgfsig': match['imgFrameTrigger'],
+                    }
         entries[entry] = pd.Series(framedat).to_frame().T
 
     if len(entries) > 0:
@@ -411,6 +447,7 @@ def timeseriesDfFromLog(dat, computePDtrace):
     from scipy.signal import medfilt
 
     posDf = pd.DataFrame(columns=posDfCols)
+    laserDf = pd.DataFrame(columns=laserDfCols)
     ftDf = pd.DataFrame(columns=ftDfCols)
     dtDf = pd.DataFrame(columns=dtDfCols)
     if computePDtrace:
@@ -419,6 +456,7 @@ def timeseriesDfFromLog(dat, computePDtrace):
         pdDf = pd.DataFrame(columns = ['frame','time', 'imgfsig'])
 
     posDf = posDfFromLog(dat)
+    laserDf = laserDfFromLog(dat)
     ftDf = ftDfFromLog(dat)
     dtDf = dtDfFromLog(dat)
 
@@ -426,6 +464,7 @@ def timeseriesDfFromLog(dat, computePDtrace):
     except: print("No analog input data was recorded.")
 
     if len(posDf) > 0: posDf.time = posDf.time-posDf.time[0]
+    if len(laserDf) > 0: laserDf.time = laserDf.time-laserDf.time[0]
     if len(dtDf) > 0: dtDf.time = dtDf.time-dtDf.time[0]
     if len(pdDf) > 0: pdDf.time = pdDf.time-pdDf.time[0]
 
@@ -452,7 +491,7 @@ def timeseriesDfFromLog(dat, computePDtrace):
     else:
         nidDf = pd.DataFrame()
 
-    return posDf, ftDf, nidDf
+    return posDf, laserDf, ftDf, nidDf
 
 
 def generateInterTime(tsDf):
@@ -482,3 +521,48 @@ def generateInterTime(tsDf):
     tsDf['timeinterp'] = timeinterp_f(frameIndx)
 
     return tsDf
+
+
+def mergeDfs(dirName, unityFiles, plot=False, rotate_by=None, derive=True, kinematic_subject=False):
+    fullDf = pd.DataFrame()
+    fullVidDf = pd.DataFrame()
+    for i,f in enumerate(unityFiles):
+        print(f)
+        uvrTest = constructUnityVRexperiment(dirName,f)
+        posDf = posAnalysis.position(uvrTest, 
+                         rotate_by = rotate_by,
+                         derive = derive, #derive set to true adds 
+                         #derived parameters like velocity and angle to the dataframe
+                         plot=plot
+                         #pass the following parameters to save the dataframe in a chosen directory
+                         #,plotsave=False,saveDir=saveDir
+                        )
+
+         #account for weird example kinematic effect
+        if kinematic_subject: 
+            if len(posDf['time'].unique()) != len(posDf):
+                posDf = posDf.iloc[::2].reset_index(drop=True)
+            posDf = posDf.fillna(0)
+        
+        vidDf = uvrTest.vidDf.copy()
+        laserDf = pd.merge(posDf, uvrTest.laserDf, on=['frame']).copy()
+        laserDf = laserDf.rename(columns={"time_x": "timeInTrial", "time_y": "time"})
+        laserDf['trial'] = i
+        laserDf['trial_name'] = f
+
+        #ASSUMPTION: UNITY X AND Y START AT 0, if problem fixed on unity end, remove snippet from below
+        #relies on sorting by time
+        if 'x' in fullDf:
+            laserDf['x'] = laserDf['x'] + fullDf['x'].iloc[-1]
+            laserDf['y'] = laserDf['y'] + fullDf['y'].iloc[-1]
+            laserDf['frame'] = laserDf['frame'] + fullDf['frame'].iloc[-1]
+            laserDf['time'] = laserDf['time'] + fullDf['time'].iloc[-1]
+            if derive:
+                laserDf['s'] = laserDf['s'] + fullDf['s'].iloc[-1]
+            
+            #breaks independance
+            vidDf['frame'] = vidDf['frame'] + fullDf['frame'].iloc[-1]
+
+        fullDf = pd.concat([fullDf,laserDf])
+        fullVidDf = pd.concat([fullVidDf,vidDf])
+    return fullDf.reset_index(drop=True), fullVidDf.reset_index(drop = True)
