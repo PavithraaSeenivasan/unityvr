@@ -14,7 +14,7 @@ from os.path import sep, exists, join
 ##functions to process posDf dataframe
 
 #obtain the position dataframe with derived quantities
-def position(uvrDat, derive = True, rotate_by = None, filter_date = '2021-09-08', plot = False, plotsave=False, saveDir=None):
+def position(uvrDat, derive = True, rotate_by = None, filter_date = '2021-09-08', plot = False, plotsave=False, saveDir=None, computeVel=False, **computeVelocitiesKwargs):
     ## input arguments
     # set derive = True if you want to compute derived quantities (ds, s, dTh (change in angle), radangle (angle in radians(-pi,pi)))
     # rotate_by: angle (degrees) by which to rotate the trajectory to ensure the bright part of the panorama is at 180 degree heading.
@@ -34,8 +34,12 @@ def position(uvrDat, derive = True, rotate_by = None, filter_date = '2021-09-08'
     #rotate
     if rotate_by is not None:
         posDf['x'], posDf['y'] = rotation_deg(posDf['x'],posDf['y'],rotate_by)
-        posDf['dx'], posDf['dy'] = rotation_deg(posDf['dx'],posDf['dy'],rotate_by)
-        posDf['dxattempt'], posDf['dyattempt'] = rotation_deg(posDf['dxattempt'],posDf['dyattempt'],rotate_by)
+        if 'dx' in posDf:
+            posDf['dx'], posDf['dy'] = rotation_deg(posDf['dx'],posDf['dy'],rotate_by)
+            posDf['dxattempt'], posDf['dyattempt'] = rotation_deg(posDf['dxattempt'],posDf['dyattempt'],rotate_by)
+        else:
+            posDf['dx'] = np.gradient(posDf['x'])
+            posDf['dy'] = np.gradient(posDf['y'])
         posDf['angle'] = (posDf['angle']+rotate_by)%360
         uvrDat.metadata['rotated_by'] = (uvrDat.metadata['rotated_by']+rotate_by)%360 if ('rotated_by' in uvrDat.metadata) else (rotate_by%360)
 
@@ -44,6 +48,8 @@ def position(uvrDat, derive = True, rotate_by = None, filter_date = '2021-09-08'
 
     if derive:
         posDf = posDerive(posDf)
+    if computeVelocities:
+        posDf = computeVelocities(posDf,**computeVelocitiesKwargs)
         
         #get flight and clipped from flightDf dataframe
         if hasattr(uvrDat,'flightDf'):
