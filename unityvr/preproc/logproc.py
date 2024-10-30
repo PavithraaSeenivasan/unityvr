@@ -26,6 +26,7 @@ def find_files_by_extension(dirName, extension1):
 objDfCols = ['name','collider','px','py','pz','rx','ry','rz','sx','sy','sz']
 laserDfCols = ['frame', 'time', 'laser']
 posDfCols = ['frame','time','x','y','angle']
+slipDfCols = ['frame', 'time', 'attempted_x', 'attempted_y','attempted_angle']
 ftDfCols = ['frame','ficTracTReadMs','ficTracTWriteMs','dx','dy','dz']
 dtDfCols = ['frame','time','dt']
 nidDfCols = ['frame','time','dt','pdsig','imgfsig']
@@ -44,6 +45,7 @@ class unityVRexperiment:
 
     # timeseries data
     posDf: pd.DataFrame = pd.DataFrame(columns=posDfCols)
+    slipDf: pd.DataFrame = pd.DataFrame(columns=slipDfCols)
     laserDf: pd.DataFrame = pd.DataFrame(columns=laserDfCols)
     ftDf: pd.DataFrame = pd.DataFrame(columns=ftDfCols)
     nidDf: pd.DataFrame = pd.DataFrame(columns=nidDfCols)
@@ -82,6 +84,7 @@ class unityVRexperiment:
         self.objDf.to_csv(sep.join([savepath,'objDf.csv']))
         self.laserDf.to_csv(sep.join([savepath,'laserDf.csv']))
         self.posDf.to_csv(sep.join([savepath,'posDf.csv']))
+        self.slipDf.to_csv(sep.join([savepath,'slipDf.csv']))
         self.ftDf.to_csv(sep.join([savepath,'ftDf.csv']))
         self.nidDf.to_csv(sep.join([savepath,'nidDf.csv']))
         self.texDf.to_csv(sep.join([savepath,'texDf.csv']))
@@ -112,9 +115,11 @@ def convertJsonToPandas(dirName,fileName,saveDir, computePDtrace):
     objDf.to_csv(sep.join([savepath,'objDf.csv']))
 
     # construct and save position and velocity dataframes
-    posDf, laserDf, ftDf, nidDf = timeseriesDfFromLog(dat, computePDtrace)
+    slipDf, posDf, laserDf, ftDf, nidDf = timeseriesDfFromLog(dat, computePDtrace)
     posDf.to_csv(sep.join([savepath,'posDf.csv']))
-    del posDf 
+    del posDf
+    slipDf.to_csv(sep.join([savepath,'slipDf.csv']))
+    del slipDf 
     laserDf.to_csv(sep.join([savepath,'laserDf.csv']))
     del laserDf 
     ftDf.to_csv(sep.join([savepath,'ftDf.csv']))
@@ -139,11 +144,11 @@ def constructUnityVRexperiment(dirName,fileName):
 
     metadat = makeMetaDict(dat, fileName)
     objDf = objDfFromLog(dat)
-    posDf, laserDf, ftDf, nidDf = timeseriesDfFromLog(dat, computePDtrace=True)
+    slipDf, posDf, laserDf, ftDf, nidDf = timeseriesDfFromLog(dat, computePDtrace=True)
     texDf = texDfFromLog(dat)
     vidDf = vidDfFromLog(dat)
 
-    uvrexperiment = unityVRexperiment(metadata=metadat,posDf=posDf, laserDf=laserDf,ftDf=ftDf,nidDf=nidDf,objDf=objDf,texDf=texDf, vidDf=vidDf)
+    uvrexperiment = unityVRexperiment(metadata=metadat,posDf=posDf, laserDf=laserDf,ftDf=ftDf,nidDf=nidDf,objDf=objDf,texDf=texDf, vidDf=vidDf, slipDf=slipDf)
 
     return uvrexperiment
 
@@ -286,7 +291,7 @@ def posDfFromLog(dat):
                             'time': match['timeSecs'],
                             'x': match['worldPosition']['x'],
                             'y': match['worldPosition']['z'], #axes are named differently in Unity
-                            'angle': (-match['worldRotationDegs']['y'])%360, #flip due to left handed convention in Unity
+                            'angle': (match['worldRotationDegs']['y']), #flip due to left handed convention in Unity
                            }
             entries[entry] = pd.Series(framedat).to_frame().T
     
@@ -299,7 +304,7 @@ def posDfFromLog(dat):
                             'x': match['worldPosition']['x'],
                             'y': match['worldPosition']['z'], #axes are named differently in Unity
                             #'angle': match['worldRotationDegs']['y'],
-                            'angle': (-match['worldRotationDegs']['y'])%360, #flip due to left handed convention in Unity
+                            'angle': (match['worldRotationDegs']['y']), #flip due to left handed convention in Unity
                             'dx':match['actualTranslation']['x'],
                             'dy':match['actualTranslation']['z'],
                             'dxattempt': match['attemptedTranslation']['x'],
@@ -308,6 +313,22 @@ def posDfFromLog(dat):
             entries[entry] = pd.Series(framedat).to_frame().T
     print('correcting for Unity angle convention.')
 
+    if len(entries) > 0:
+        return  pd.concat(entries,ignore_index = True)
+    else:
+        return pd.DataFrame()
+    
+def slipDfFromLog(dat):
+    matching = [s for s in dat if "fictracAttempt" in s]
+    entries = [None]*len(matching)
+    for entry, match in enumerate(matching):
+            fictracdat = {'frame': match['frame'],
+                            'time': match['timeSecs'],
+                            'attempted_x': match['fictracAttempt']['x'],
+                            'attempted_y': match['fictracAttempt']['y'],
+                            'attempted_angle': match['fictracAttempt']['z']%360
+                            }
+            entries[entry] = pd.Series(fictracdat).to_frame().T
     if len(entries) > 0:
         return  pd.concat(entries,ignore_index = True)
     else:
@@ -447,6 +468,7 @@ def timeseriesDfFromLog(dat, computePDtrace):
     from scipy.signal import medfilt
 
     posDf = pd.DataFrame(columns=posDfCols)
+    slipDf = pd.DataFrame(columns=slipDfCols)
     laserDf = pd.DataFrame(columns=laserDfCols)
     ftDf = pd.DataFrame(columns=ftDfCols)
     dtDf = pd.DataFrame(columns=dtDfCols)
@@ -456,6 +478,7 @@ def timeseriesDfFromLog(dat, computePDtrace):
         pdDf = pd.DataFrame(columns = ['frame','time', 'imgfsig'])
 
     posDf = posDfFromLog(dat)
+    slipDf = slipDfFromLog(dat)
     laserDf = laserDfFromLog(dat)
     ftDf = ftDfFromLog(dat)
     dtDf = dtDfFromLog(dat)
@@ -464,6 +487,7 @@ def timeseriesDfFromLog(dat, computePDtrace):
     except: print("No analog input data was recorded.")
 
     if len(posDf) > 0: posDf.time = posDf.time-posDf.time[0]
+    if len(slipDf) > 0: slipDf.time = slipDf.time-slipDf.time[0]
     if len(laserDf) > 0: laserDf.time = laserDf.time-laserDf.time[0]
     if len(dtDf) > 0: dtDf.time = dtDf.time-dtDf.time[0]
     if len(pdDf) > 0: pdDf.time = pdDf.time-pdDf.time[0]
@@ -491,7 +515,7 @@ def timeseriesDfFromLog(dat, computePDtrace):
     else:
         nidDf = pd.DataFrame()
 
-    return posDf, laserDf, ftDf, nidDf
+    return slipDf, posDf, laserDf, ftDf, nidDf
 
 
 def generateInterTime(tsDf):

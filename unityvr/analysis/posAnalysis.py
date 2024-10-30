@@ -29,14 +29,14 @@ def position(uvrDat, derive = True, rotate_by = None, filter_date = '2021-09-08'
             #chad doesn't use collision handling (revisit why we use at all)
             posDf['dx'] = np.hstack([0,np.diff(posDf['x'])])
             posDf['dy'] = np.hstack([0,np.diff(posDf['y'])])
-            posDf['dxattempt'] = np.hstack([0,np.diff(posDf['x'])])
-            posDf['dyattempt'] = np.hstack([0,np.diff(posDf['y'])])
+            #posDf['dxattempt'] = np.hstack([0,np.diff(posDf['x'])])
+            #posDf['dyattempt'] = np.hstack([0,np.diff(posDf['y'])])
 
     #rotate
     if rotate_by is not None:
         posDf['x'], posDf['y'] = rotation_deg(posDf['x'],posDf['y'],rotate_by)        
         posDf['dx'], posDf['dy'] = rotation_deg(posDf['dx'],posDf['dy'],rotate_by)
-        posDf['dxattempt'], posDf['dyattempt'] = rotation_deg(posDf['dxattempt'],posDf['dyattempt'],rotate_by)
+        #posDf['dxattempt'], posDf['dyattempt'] = rotation_deg(posDf['dxattempt'],posDf['dyattempt'],rotate_by)
         posDf['angle'] = (posDf['angle']+rotate_by)%360
         uvrDat.metadata['rotated_by'] = (uvrDat.metadata['rotated_by']+rotate_by)%360 if ('rotated_by' in uvrDat.metadata) else (rotate_by%360)
 
@@ -55,6 +55,11 @@ def position(uvrDat, derive = True, rotate_by = None, filter_date = '2021-09-08'
             fig.savefig(getTrajFigName("walking_trajectory",saveDir,uvrDat.metadata))
 
     return posDf
+
+
+def slip_position(uvrDat):
+    slipDf = uvrDat.slipDf
+    return slipDf
 
 #segment flight bouts
 def flightSeg(posDf, thresh, freq=120, plot = False, freq_content = 0.5, plotsave=False, saveDir=None, uvrDat=None):
