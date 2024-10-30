@@ -223,3 +223,11 @@ def loadAndAlignPreprocessedData(root, subdir, flies, conditions, trials, panDef
 
                 allExpDf = pd.concat([allExpDf,expDf])
     return allExpDf
+
+#take a scene and add imaging time to it
+
+def addImagingTimeToSceneArr(sceneArr, uvrDat, imgDataTime, imgMetadat, timeStr = 'volumes [s]', sceneFrameStr = 'frames', **kwargs):
+    expDf = generateUnityExpDf(imgDataTime, uvrDat, imgMetadat, timeStr=timeStr, **kwargs)
+    interpF = sp.interpolate.interp1d(expDf['time'], expDf[timeStr], fill_value='extrapolate')
+    sceneArr = sceneArr.assign_coords(time = (sceneFrameStr, interpF(uvrDat.posDf['time'])))
+    return sceneArr
