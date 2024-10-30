@@ -50,8 +50,8 @@ def convertTextureVals(texDf, RF=True):
     texDf['sweepdir'] = np.sign(texDf.xtex) #right handed convention
     return texDf
 
-def deriveVidVals(uvrDat, movieFolderPath, imageFile = 'stimGenDf.csv', sceneFile='scene1DArray.npy'):
-    movieFolder = uvrDat.vidDf['img'].str.split(r'\\').str.get(-2).unique()[0]
+def deriveVidVals(uvrDat, movieFolderPath, imageFile = 'stimGenDf.csv', sceneFile='scene1DArray.npy', shift = -90):
+    movieFolder = uvrDat.vidDf['img'].str.split(r'\\').str.get(-2).unique()[-1]
     moviePath = movieFolderPath + movieFolder
     stimGenDf = pd.read_csv(sep.join([moviePath,imageFile]),index_col=0)
     uvrDat.vidDf['filename'] = uvrDat.vidDf['img'].str.split(r'\\').str.get(-1)
@@ -59,4 +59,5 @@ def deriveVidVals(uvrDat, movieFolderPath, imageFile = 'stimGenDf.csv', sceneFil
     columnsToKeepVid = list(uvrDat.vidDf.columns)
     uvrDat.vidDf = pd.merge(uvrDat.posDf,uvrDat.vidDf,on = ['frame'],how='left').drop(columns='time_y').rename(columns={'time_x':'time'}).ffill()[columnsToKeepVid]
     uvrDat.sceneArray = np.load(sep.join([moviePath,sceneFile]))
+    uvrDat.sceneArray = np.roll(uvrDat.sceneArray[:,:], shift=int(np.round(uvrDat.sceneArray.shape[-1]/360*shift)))
     return uvrDat
