@@ -89,7 +89,7 @@ def generateUnityExpDf(imgVolumeTimes, uvrDat, imgMetadat, suppressDepugPlot = F
      expDf = mergeUnityDfs([x for x in unityDfsDS if x is not None],**mergeUnityDfs_params)
      return expDf
 
-def truncateImgDataToUnityDf(imgData, expDf, timeStr = 'time [s]'):
+def truncateImgDataToUnityDf(imgData, expDf, timeStr = 'volumes [s]'):
     imgData = imgData[np.in1d(imgData[timeStr].values, expDf[timeStr].values,)].copy()
     return imgData
 
@@ -231,3 +231,16 @@ def addImagingTimeToSceneArr(sceneArr, uvrDat, imgDataTime, imgMetadat, timeStr 
     interpF = sp.interpolate.interp1d(expDf['time'], expDf[timeStr], fill_value='extrapolate')
     sceneArr = sceneArr.assign_coords(time = (sceneFrameStr, interpF(uvrDat.posDf['time'])))
     return sceneArr
+
+# take all the unity dataframes and add imaging time to them
+
+def addImagingTimeToUvrDat(imgDataTime, uvrDat, imgMetadat, timeStr = 'volumes [s]', dataframeAppend = 'Df', frameStr = 'frame', generateExpDf_params = {}):
+    expDf = generateUnityExpDf(imgDataTime, uvrDat, imgMetadat, timeStr=timeStr, dataframeAppend = dataframeAppend, frameStr=frameStr, **generateExpDf_params)
+    interpF = sp.interpolate.interp1d(expDf['frame'], expDf[timeStr], fill_value='extrapolate')
+    for f in  uvrDat.__dataclass_fields__:
+        if dataframeAppend in f:
+            unityDf = getattr(uvrDat,f)
+            if frameStr in unityDf:
+                unityDf[timeStr] = interpF(unityDf['frame'])
+                setattr(uvrDat,f,unityDf)
+    return uvrDat
