@@ -53,6 +53,8 @@ def debugAlignmentPlots(uvrDat, imgMetadat, imgInd, volFramePos, lims=[0,100]):
     axs[2].axvline(int(np.round(sampling_rate/fps))+1, color='r', linestyle='--')
     axs[2].axvline(int(np.round(sampling_rate/fps))-1, color='r', linestyle='--')
     axs[2].hist(np.diff(imgInd))
+    axs[2].axvline(np.diff(imgInd).min(), color='tab:blue', linestyle='-', alpha=0.5)
+    axs[2].axvline(np.diff(imgInd).max(), color='tab:blue', linestyle='-', alpha=0.5)
     axs[2].set_title('Sanity check 3:\nCheck if all frame starts are equally spaced')
     vutils.myAxisTheme(axs[2])
 
