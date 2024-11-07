@@ -15,7 +15,7 @@ objDfCols = ['name','collider','px','py','pz','rx','ry','rz','sx','sy','sz']
 posDfCols = ['frame','time','x','y','angle']
 ftDfCols = ['frame','ficTracTReadMs','ficTracTWriteMs','dx','dy','dz']
 dtDfCols = ['frame','time','dt']
-nidDfCols = ['frame','time','dt','pdsig','imgfsig']
+nidDfCols = ['frame','time','dt','pdsig','imgfsig', 'imgfind']
 texDfCols = ['frame','time','xtex','ytex']
 vidDfCols = ['frame','time','img','duration']
 # Data class definition
@@ -297,17 +297,25 @@ def posDfFromLog(dat, posDfKey='attemptedTranslation', fictracSubject=None):
         return pd.DataFrame()
 
 
-def ftDfFromLog(dat):
+def ftDfFromLog(dat, fictracSubject=None, ftDfKey='ficTracDeltaRotationVectorLab'):
     # get fictrac data
-    matching = [s for s in dat if "ficTracDeltaRotationVectorLab" in s]
+    matching = [s for s in dat if ftDfKey in s]
     entries = [None]*len(matching)
     for entry, match in enumerate(matching):
-        framedat = {'frame': match['frame'],
-                        'ficTracTReadMs': match['ficTracTimestampReadMs'],
-                        'ficTracTWriteMs': match['ficTracTimestampWriteMs'],
-                        'dx': match['ficTracDeltaRotationVectorLab']['x'],
-                        'dy': match['ficTracDeltaRotationVectorLab']['y'],
-                        'dz': match['ficTracDeltaRotationVectorLab']['z']}
+        if fictracSubject != 'Integrated':
+            framedat = {'frame': match['frame'],
+                            'ficTracTReadMs': match['ficTracTimestampReadMs'],
+                            'ficTracTWriteMs': match['ficTracTimestampWriteMs'],
+                            'dx': match[ftDfKey]['x'],
+                            'dy': match[ftDfKey]['y'],
+                            'dz': match[ftDfKey]['z']}
+        else:
+            # note that this is meant for using integrated fictrac data, but does not explicitly specify which variable from fictrac is being logged. TODO: make the variable explicit. 
+            framedat = {'frame': match['frame'],
+                            'x': match[ftDfKey]['x'],
+                            'y': match[ftDfKey]['y'],
+                            'z': match[ftDfKey]['z']%360
+                            }
         entries[entry] = pd.Series(framedat).to_frame().T
 
     if len(entries) > 0:
@@ -341,18 +349,20 @@ def pdDfFromLog(dat, computePDtrace):
             framedat = {'frame': match['frame'],
                         'time': match['timeSecs'],
                         'pdsig': match['tracePD'],
-                        'imgfsig': match['imgFrameTrigger']}
+                        'imgfsig': match['imgFrameTrigger'],
+                        'imgfind': match['indexFrameTrigger']}
         else:
             framedat = {'frame': match['frame'],
                     'time': match['timeSecs'],
-                    'imgfsig': match['imgFrameTrigger']}
+                    'imgfsig': match['imgFrameTrigger'],
+                    'imgfind': match['indexFrameTrigger']}
         entries[entry] = pd.Series(framedat).to_frame().T
 
     if len(entries) > 0:
         if computePDtrace:
-            pdDf = pd.concat(entries,ignore_index = True)[['frame', 'time', 'pdsig', 'imgfsig']].drop_duplicates()
+            pdDf = pd.concat(entries,ignore_index = True)[['frame', 'time', 'pdsig', 'imgfsig', 'imgfind']].drop_duplicates()
         else:
-            pdDf = pd.concat(entries,ignore_index = True)[['frame', 'time','imgfsig']].drop_duplicates()
+            pdDf = pd.concat(entries,ignore_index = True)[['frame', 'time','imgfsig', 'imgfind']].drop_duplicates()
         return pdDf
     else:
         return pd.DataFrame()
@@ -417,9 +427,9 @@ def timeseriesDfFromLog(dat, computePDtrace=True, **posDfKeyWargs):
     ftDf = pd.DataFrame(columns=ftDfCols)
     dtDf = pd.DataFrame(columns=dtDfCols)
     if computePDtrace:
-        pdDf = pd.DataFrame(columns = ['frame','time','pdsig', 'imgfsig'])
+        pdDf = pd.DataFrame(columns = ['frame','time','pdsig', 'imgfsig', 'imgfind'])
     else:
-        pdDf = pd.DataFrame(columns = ['frame','time', 'imgfsig'])
+        pdDf = pd.DataFrame(columns = ['frame','time', 'imgfsig', 'imgfind'])
 
     posDf = posDfFromLog(dat,**posDfKeyWargs)
     ftDf = ftDfFromLog(dat)
