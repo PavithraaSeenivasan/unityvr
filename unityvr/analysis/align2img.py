@@ -24,9 +24,9 @@ def findImgFrameTimes(uvrDat,imgMetadat,diffVal=3,smoothing=3,smooth=False):
 
     return imgInd, volFramePos
 
-def debugAlignmentPlots(uvrDat, imgMetadat, imgInd, volFramePos, lims=[1000,1200]):
+def debugAlignmentPlots(uvrDat, imgMetadat, imgInd, volFramePos, lims=[0,100]):
     # figure to make some sanity check plots
-    fig, axs = plt.subplots(1,3, figsize=(12,4), width_ratios=[1,1,0.5])
+    fig, axs = plt.subplots(1,3, figsize=(15,4), width_ratios=[1,1,1])
 
     # sanity check if frame starts are detected correctly from analog signal
     axs[0].plot(np.arange(0,len(uvrDat.nidDf.imgfsig.values)), uvrDat.nidDf.imgfsig, '.-')
@@ -49,10 +49,11 @@ def debugAlignmentPlots(uvrDat, imgMetadat, imgInd, volFramePos, lims=[1000,1200
     # sanity check to see the difference in frame start times
     fps = imgMetadat['fpsscan'] #frame rate of scanimage
     sampling_rate = len(uvrDat.nidDf.dropna())/(uvrDat.nidDf.dropna()['time'].iloc[-1]-uvrDat.nidDf.dropna()['time'].iloc[0])
-    axs[2].axvline(int(sampling_rate/fps), color='r', linestyle='-')
-    axs[2].axvline(int(sampling_rate/fps)+1, color='r', linestyle='--')
-    axs[2].axvline(int(sampling_rate/fps)-1, color='r', linestyle='--')
+    axs[2].axvline(int(np.round(sampling_rate/fps)), color='r', linestyle='-')
+    axs[2].axvline(int(np.round(sampling_rate/fps))+1, color='r', linestyle='--')
+    axs[2].axvline(int(np.round(sampling_rate/fps))-1, color='r', linestyle='--')
     axs[2].hist(np.diff(imgInd))
+    axs[2].set_title('Sanity check 3:\nCheck if all frame starts are equally spaced')
     vutils.myAxisTheme(axs[2])
 
 def mergeUnityDfs(unityDfs, on = ['frame', 'time', 'volumes [s]'], interpolate=None):
