@@ -8,6 +8,8 @@ from os.path import sep, isfile, exists
 import json
 import numpy as np
 from scipy import interpolate
+import warnings
+from scipy.signal import medfilt
 
 #dataframe column defs
 objDfCols = ['name','collider','px','py','pz','rx','ry','rz','sx','sy','sz']
@@ -350,9 +352,9 @@ def pdDfFromLog(dat, computePDtrace):
 
     if len(entries) > 0:
         if computePDtrace:
-            pdDf = pd.concat(entries,ignore_index = True)[['frame', 'time', 'pdsig', 'imgfsig']].drop_duplicates()
+            pdDf = pd.concat(entries,ignore_index = True)[['frame', 'time', 'pdsig', 'imgfsig']]#.drop_duplicates()
         else:
-            pdDf = pd.concat(entries,ignore_index = True)[['frame', 'time','imgfsig']].drop_duplicates()
+            pdDf = pd.concat(entries,ignore_index = True)[['frame', 'time','imgfsig']]#.drop_duplicates()
         return pdDf
     else:
         return pd.DataFrame()
@@ -411,7 +413,7 @@ def ftTrajDfFromLog(directory, filename):
     return ftTrajDf
 
 def timeseriesDfFromLog(dat, computePDtrace=True, **posDfKeyWargs):
-    from scipy.signal import medfilt
+    
 
     posDf = pd.DataFrame(columns=posDfCols)
     ftDf = pd.DataFrame(columns=ftDfCols)
@@ -441,6 +443,7 @@ def timeseriesDfFromLog(dat, computePDtrace=True, **posDfKeyWargs):
     if len(dtDf) > 0: posDf = pd.merge(dtDf, posDf, on="frame", how='outer').rename(columns={'time_x':'time'}).drop(['time_y'],axis=1)
 
     if len(pdDf) > 0 and len(dtDf) > 0:
+
         nidDf = pd.merge(dtDf, pdDf, on="frame", how='left').rename(columns={'time_x':'time'}).drop(['time_y'],axis=1)
         if computePDtrace:
             nidDf["pdFilt"]  = nidDf.pdsig.values
@@ -459,7 +462,7 @@ def timeseriesDfFromLog(dat, computePDtrace=True, **posDfKeyWargs):
 
 
 def generateInterTime(tsDf):
-    from scipy import interpolate
+    
 
     tsDf['framestart'] = np.hstack([0,1*np.diff(tsDf.time)>0])
     #tsDf['framestart'] = tsDf.framestart.astype(bool)
@@ -478,10 +481,10 @@ def generateInterTime(tsDf):
     timeAtFramestart = tsDf.time[frameStartIndx].values
 
     #generate interpolated frames
-    frameinterp_f = interpolate.interp1d(frameStartIndx,frameNums)
+    frameinterp_f = interpolate.interp1d(frameStartIndx,frameNums,bounds_error=False,fill_value='extrapolate')
     tsDf['frameinterp'] = frameinterp_f(frameIndx)
 
-    timeinterp_f = interpolate.interp1d(frameStartIndx,timeAtFramestart)
+    timeinterp_f = interpolate.interp1d(frameStartIndx,timeAtFramestart,bounds_error=False,fill_value='extrapolate')
     tsDf['timeinterp'] = timeinterp_f(frameIndx)
 
     return tsDf

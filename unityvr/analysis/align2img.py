@@ -9,10 +9,13 @@ from unityvr.preproc import logproc
 from unityvr.analysis import utils as autils
 import scipy as sp
 
-def findImgFrameTimes(uvrDat,imgMetadat,diffVal=3):
-
-    imgInd = np.where(np.diff(uvrDat.nidDf['imgfsig'].values)>diffVal)[0]
-
+def findImgFrameTimes(uvrDat,imgMetadat,diffVal=3,smoothing=3,smooth=False):
+    #find the start of each volume from the analog signal
+    if smooth:
+        imgInd = find_upticks(uvrDat.nidDf['imgfsig'].values,smoothing)
+    else:
+        imgInd = np.where(np.diff(uvrDat.nidDf['imgfsig'].values)>diffVal)[0]
+    
     imgFrame = uvrDat.nidDf.frame.values[imgInd].astype('int')
 
     #take only every x frame as start of volume
@@ -20,9 +23,10 @@ def findImgFrameTimes(uvrDat,imgMetadat,diffVal=3):
     volFramePos = np.where(np.in1d(uvrDat.posDf.frame.values,volFrame, ))[0]
 
     return imgInd, volFramePos
+
 def debugAlignmentPlots(uvrDat, imgMetadat, imgInd, volFramePos, lims=[1000,1200]):
     # figure to make some sanity check plots
-    fig, axs = plt.subplots(1,2, figsize=(12,4))
+    fig, axs = plt.subplots(1,3, figsize=(12,4), width_ratios=[1,1,0.5])
 
     # sanity check if frame starts are detected correctly from analog signal
     axs[0].plot(np.arange(0,len(uvrDat.nidDf.imgfsig.values)), uvrDat.nidDf.imgfsig, '.-')
@@ -41,6 +45,15 @@ def debugAlignmentPlots(uvrDat, imgMetadat, imgInd, volFramePos, lims=[1000,1200
     axs[1].set_ylim(0,round(uvrDat.nidDf.timeinterp.values[imgInd[0::imgMetadat['fpv']]].astype('int')[-1])+1)
     axs[1].set_title('Sanity check 2:\nCheck that time values align well')
     vutils.myAxisTheme(axs[1])
+
+    # sanity check to see the difference in frame start times
+    fps = imgMetadat['fpsscan'] #frame rate of scanimage
+    sampling_rate = len(uvrDat.nidDf.dropna())/(uvrDat.nidDf.dropna()['time'].iloc[-1]-uvrDat.nidDf.dropna()['time'].iloc[0])
+    axs[2].axvline(int(sampling_rate/fps), color='r', linestyle='-')
+    axs[2].axvline(int(sampling_rate/fps)+1, color='r', linestyle='--')
+    axs[2].axvline(int(sampling_rate/fps)-1, color='r', linestyle='--')
+    axs[2].hist(np.diff(imgInd))
+    vutils.myAxisTheme(axs[2])
 
 def mergeUnityDfs(unityDfs, on = ['frame', 'time', 'volumes [s]'], interpolate=None):
     from functools import reduce
@@ -244,3 +257,10 @@ def addImagingTimeToUvrDat(imgDataTime, uvrDat, imgMetadat, timeStr = 'volumes [
                 unityDf[timeStr] = interpF(unityDf['frame'])
                 setattr(uvrDat,f,unityDf)
     return uvrDat
+
+def find_upticks(signal, smoothing=3):
+    smoothed_signal = sp.ndimage.gaussian_filter1d(signal[~np.isnan(signal)], smoothing)
+    normed_smoothed_signal = smoothed_signal-np.max(smoothed_signal)/2
+    sign_changes = np.sign(normed_smoothed_signal)
+    positive_zero_crossings = np.where((sign_changes[:-1] < 0) & (sign_changes[1:] > 0))[0]
+    return positive_zero_crossings
