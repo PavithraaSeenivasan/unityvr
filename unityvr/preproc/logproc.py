@@ -6,6 +6,10 @@ from dataclasses import dataclass, asdict
 from os import mkdir, makedirs
 from os.path import sep, isfile, exists
 import json
+import numpy as np
+from scipy import interpolate
+import warnings
+from scipy.signal import medfilt
 
 #dataframe column defs
 objDfCols = ['name','collider','px','py','pz','rx','ry','rz','sx','sy','sz']
@@ -116,13 +120,13 @@ def convertJsonToPandas(dirName,fileName,saveDir, computePDtrace):
     return savepath
 
 # constructor for unityVRexperiment
-def constructUnityVRexperiment(dirName,fileName):
+def constructUnityVRexperiment(dirName,fileName,computePDtrace = True,**kwargs):
 
     dat = openUnityLog(dirName, fileName)
 
     metadat = makeMetaDict(dat, fileName)
     objDf = objDfFromLog(dat)
-    posDf, ftDf, nidDf = timeseriesDfFromLog(dat, computePDtrace=True)
+    posDf, ftDf, nidDf = timeseriesDfFromLog(dat, computePDtrace, **kwargs)
     texDf = texDfFromLog(dat)
     vidDf = vidDfFromLog(dat)
 
@@ -263,21 +267,29 @@ def objDfFromLog(dat):
         return pd.DataFrame()
 
 
-def posDfFromLog(dat):
+def posDfFromLog(dat, posDfKey='attemptedTranslation', fictracSubject=None):
     # get info about camera position in vr
-    matching = [s for s in dat if "attemptedTranslation" in s]
+    matching = [s for s in dat if posDfKey in s] #checks key to extract from that particular dump
     entries = [None]*len(matching)
     for entry, match in enumerate(matching):
-        framedat = {'frame': match['frame'],
+        if fictracSubject != 'Integrated':
+            framedat = {'frame': match['frame'],
                         'time': match['timeSecs'],
                         'x': match['worldPosition']['x'],
                         'y': match['worldPosition']['z'], #axes are named differently in Unity
                         'angle': (-match['worldRotationDegs']['y'])%360, #flip due to left handed convention in Unity
-                        'dx':match['actualTranslation']['x'],
-                        'dy':match['actualTranslation']['z'],
+                        'dx': match['actualTranslation']['x'],
+                        'dy': match['actualTranslation']['z'],
                         'dxattempt': match['attemptedTranslation']['x'],
                         'dyattempt': match['attemptedTranslation']['z']
                        }
+        else:
+            framedat = {'frame': match['frame'],
+                            'time': match['timeSecs'],
+                            'x': match['worldPosition']['x'],
+                            'y': match['worldPosition']['z'], #axes are named differently in Unity
+                            'angle': (-match['worldRotationDegs']['y'])%360, #flip due to left handed convention in Unity
+                        }
         entries[entry] = pd.Series(framedat).to_frame().T
     print('correcting for Unity angle convention.')
 
@@ -324,7 +336,7 @@ def dtDfFromLog(dat):
 
 def pdDfFromLog(dat, computePDtrace):
     # get NiDaq signal
-    matching = [s for s in dat if "tracePD" in s]
+    matching = [s for s in dat if "imgFrameTrigger" in s]
     entries = [None]*len(matching)
     for entry, match in enumerate(matching):
         if computePDtrace:
@@ -340,9 +352,9 @@ def pdDfFromLog(dat, computePDtrace):
 
     if len(entries) > 0:
         if computePDtrace:
-            pdDf = pd.concat(entries,ignore_index = True)[['frame', 'time', 'pdsig', 'imgfsig']].drop_duplicates()
+            pdDf = pd.concat(entries,ignore_index = True)[['frame', 'time', 'pdsig', 'imgfsig']]#.drop_duplicates()
         else:
-            pdDf = pd.concat(entries,ignore_index = True)[['frame', 'time','imgfsig']].drop_duplicates()
+            pdDf = pd.concat(entries,ignore_index = True)[['frame', 'time','imgfsig']]#.drop_duplicates()
         return pdDf
     else:
         return pd.DataFrame()
@@ -400,8 +412,8 @@ def ftTrajDfFromLog(directory, filename):
     ftTrajDf = pd.read_csv(directory+"/"+filename,usecols=cols,names=colnames)
     return ftTrajDf
 
-def timeseriesDfFromLog(dat, computePDtrace):
-    from scipy.signal import medfilt
+def timeseriesDfFromLog(dat, computePDtrace=True, **posDfKeyWargs):
+    
 
     posDf = pd.DataFrame(columns=posDfCols)
     ftDf = pd.DataFrame(columns=ftDfCols)
@@ -411,7 +423,7 @@ def timeseriesDfFromLog(dat, computePDtrace):
     else:
         pdDf = pd.DataFrame(columns = ['frame','time', 'imgfsig'])
 
-    posDf = posDfFromLog(dat)
+    posDf = posDfFromLog(dat,**posDfKeyWargs)
     ftDf = ftDfFromLog(dat)
     dtDf = dtDfFromLog(dat)
 
@@ -431,15 +443,16 @@ def timeseriesDfFromLog(dat, computePDtrace):
     if len(dtDf) > 0: posDf = pd.merge(dtDf, posDf, on="frame", how='outer').rename(columns={'time_x':'time'}).drop(['time_y'],axis=1)
 
     if len(pdDf) > 0 and len(dtDf) > 0:
-        nidDf = pd.merge(dtDf, pdDf, on="frame", how='outer').rename(columns={'time_x':'time'}).drop(['time_y'],axis=1)
+
+        nidDf = pd.merge(dtDf, pdDf, on="frame", how='left').rename(columns={'time_x':'time'}).drop(['time_y'],axis=1)
         if computePDtrace:
             nidDf["pdFilt"]  = nidDf.pdsig.values
             nidDf.pdFilt.values[np.isfinite(nidDf.pdsig.values)] = medfilt(nidDf.pdsig.values[np.isfinite(nidDf.pdsig.values)])
             nidDf["pdThresh"]  = 1*(np.asarray(nidDf.pdFilt>=np.nanmedian(nidDf.pdFilt.values)))
 
-        nidDf["imgfFilt"]  = nidDf.imgfsig.values
-        nidDf.imgfFilt.values[np.isfinite(nidDf.imgfsig.values)] = medfilt(nidDf.imgfsig.values[np.isfinite(nidDf.imgfsig.values)])
-        nidDf["imgfThresh"]  = 1*(np.asarray(nidDf.imgfFilt.values>=np.nanmedian(nidDf.imgfFilt.values))).astype(np.int8)
+        #nidDf["imgfFilt"]  = nidDf.imgfsig.values
+        #nidDf.imgfFilt.values[np.isfinite(nidDf.imgfsig.values)] = medfilt(nidDf.imgfsig.values[np.isfinite(nidDf.imgfsig.values)])
+        #nidDf["imgfThresh"]  = 1*(np.asarray(nidDf.imgfFilt.values>=np.nanmedian(nidDf.imgfFilt.values))).astype(np.int8)
 
         nidDf = generateInterTime(nidDf)
     else:
@@ -449,29 +462,61 @@ def timeseriesDfFromLog(dat, computePDtrace):
 
 
 def generateInterTime(tsDf):
-    from scipy import interpolate
+    
 
     tsDf['framestart'] = np.hstack([0,1*np.diff(tsDf.time)>0])
     #tsDf['framestart'] = tsDf.framestart.astype(bool)
 
     tsDf['counts'] = 1
     #tsDf['counts'] = tsDf.counts.astype(np.int8)
-    sampperframe = tsDf.groupby('frame').sum()[['time','dt','counts']].reset_index(level=0)
+    sampperframe = tsDf.groupby('frame').sum()[['time','dt','counts']].reset_index(level=0).copy()
     sampperframe['fs'] = sampperframe.counts/sampperframe.dt
 
     frameStartIndx = np.hstack((0,np.where(tsDf.framestart)[0]))
     frameStartIndx = np.hstack((frameStartIndx, frameStartIndx[-1]+sampperframe.counts.values[-1]-1))
     frameIndx = tsDf.index.values
-    del sampperframe
+    #del sampperframe
 
     frameNums = tsDf.frame[frameStartIndx].values.astype('int')
     timeAtFramestart = tsDf.time[frameStartIndx].values
 
     #generate interpolated frames
-    frameinterp_f = interpolate.interp1d(frameStartIndx,frameNums)
+    frameinterp_f = interpolate.interp1d(frameStartIndx,frameNums,bounds_error=False,fill_value='extrapolate')
     tsDf['frameinterp'] = frameinterp_f(frameIndx)
 
-    timeinterp_f = interpolate.interp1d(frameStartIndx,timeAtFramestart)
+    timeinterp_f = interpolate.interp1d(frameStartIndx,timeAtFramestart,bounds_error=False,fill_value='extrapolate')
     tsDf['timeinterp'] = timeinterp_f(frameIndx)
 
     return tsDf
+
+
+'''
+def generateInterTime(tsDf):
+    # Mark the start of each new frame
+    tsDf['framestart'] = np.hstack([0, np.diff(tsDf.time) > 0])
+
+    tsDf['counts'] = 1
+
+    # Group by frame and calculate statistics per frame
+    sampperframe = tsDf.groupby('frame').sum()[['time', 'dt', 'counts']].reset_index(level=0).copy()
+    sampperframe['fs'] = sampperframe['counts'] / sampperframe['dt']
+
+    # Get indices where a new frame starts
+    frameStartIndx = np.hstack((0, np.where(tsDf.framestart)[0]))
+    frameStartIndx = np.hstack((frameStartIndx, frameStartIndx[-1] + sampperframe['counts'].values[-1] - 1))
+    frameIndx = tsDf.index.values
+
+    # Frame and time interpolation
+    frameNums = tsDf['frame'][frameStartIndx].values.astype('int')
+    timeAtFramestart = tsDf['time'][frameStartIndx].values
+
+    # Generate interpolated frame numbers
+    frameinterp_f = interpolate.interp1d(frameStartIndx, frameNums, bounds_error=False, fill_value='extrapolate')
+    tsDf['frameinterp'] = np.clip(frameinterp_f(frameIndx), frameNums[0], frameNums[-1])
+
+    # Generate interpolated times
+    timeinterp_f = interpolate.interp1d(frameStartIndx, timeAtFramestart, bounds_error=False, fill_value='extrapolate')
+    tsDf['timeinterp'] = np.clip(timeinterp_f(frameIndx), timeAtFramestart[0], timeAtFramestart[-1])
+
+    return tsDf
+'''
