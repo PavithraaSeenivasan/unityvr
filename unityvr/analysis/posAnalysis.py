@@ -14,32 +14,29 @@ from os.path import sep, exists, join
 ##functions to process posDf dataframe
 
 #obtain the position dataframe with derived quantities
-def position(uvrDat, derive = True, rotate_by = None, filter_date = '2021-09-08', plot = False, plotsave=False, saveDir=None, computeVel=False, **computeVelocitiesKwargs):
+def position(uvrDat, derive = True, rotate_by = None, filter_date = '2021-09-08', plot = False, plotsave=False, saveDir=None):
     ## input arguments
     # set derive = True if you want to compute derived quantities (ds, s, dTh (change in angle), radangle (angle in radians(-pi,pi)))
     # rotate_by: angle (degrees) by which to rotate the trajectory to ensure the bright part of the panorama is at 180 degree heading.
     # filter_date: date of experiment after which right handed angle convention will not be forced when loading posDf; this is because
     #              converting from Unity's left handed angle convention to right handed convention was implemented after a certain 
     #              date in the preproc.py file
-    
+
     posDf = uvrDat.posDf
 
     #angle correction
-    #this is required only for data that was preprocessed before the filter_date
-    if (np.datetime64(uvrDat.metadata['date'])<=np.datetime64(filter_date)) & ('angle_convention' not in uvrDat.metadata):
-        print('correcting for Unity angle convention.')
-        posDf['angle'] = (-posDf['angle'])%360
-        uvrDat.metadata['angle_convention'] = "right-handed"
+    if 'dx' not in posDf:
+            #chad doesn't use collision handling (revisit why we use at all)
+            posDf['dx'] = np.hstack([0,np.diff(posDf['x'])])
+            posDf['dy'] = np.hstack([0,np.diff(posDf['y'])])
+            #posDf['dxattempt'] = np.hstack([0,np.diff(posDf['x'])])
+            #posDf['dyattempt'] = np.hstack([0,np.diff(posDf['y'])])
 
     #rotate
     if rotate_by is not None:
-        posDf['x'], posDf['y'] = rotation_deg(posDf['x'],posDf['y'],rotate_by)
-        if 'dx' in posDf:
-            posDf['dx'], posDf['dy'] = rotation_deg(posDf['dx'],posDf['dy'],rotate_by)
-            posDf['dxattempt'], posDf['dyattempt'] = rotation_deg(posDf['dxattempt'],posDf['dyattempt'],rotate_by)
-        else:
-            posDf['dx'] = np.gradient(posDf['x'])
-            posDf['dy'] = np.gradient(posDf['y'])
+        posDf['x'], posDf['y'] = rotation_deg(posDf['x'],posDf['y'],rotate_by)        
+        posDf['dx'], posDf['dy'] = rotation_deg(posDf['dx'],posDf['dy'],rotate_by)
+        #posDf['dxattempt'], posDf['dyattempt'] = rotation_deg(posDf['dxattempt'],posDf['dyattempt'],rotate_by)
         posDf['angle'] = (posDf['angle']+rotate_by)%360
         uvrDat.metadata['rotated_by'] = (uvrDat.metadata['rotated_by']+rotate_by)%360 if ('rotated_by' in uvrDat.metadata) else (rotate_by%360)
 
@@ -47,16 +44,10 @@ def position(uvrDat, derive = True, rotate_by = None, filter_date = '2021-09-08'
     posDf.dc2cm = 10
 
     if derive:
-        posDf = posDerive(posDf)
-    if computeVelocities:
-        posDf = computeVelocities(posDf,**computeVelocitiesKwargs)
-        
-        #get flight and clipped from flightDf dataframe
-        if hasattr(uvrDat,'flightDf'):
-            if ('flight' in uvrDat.flightDf):
-                posDf['flight'] = uvrDat.flightDf['flight'].copy()
-            if ('clipped' in uvrDat.flightDf):
-                posDf['clipped'] = uvrDat.flightDf['clipped'].copy()
+        posDf['ds'] = np.sqrt(posDf['dx']**2+posDf['dy']**2)
+        posDf['s'] = np.cumsum(posDf['ds'])
+        posDf['dTh'] = (np.diff(posDf['angle'],prepend=posDf['angle'].iloc[0]) + 180)%360 - 180
+        posDf['radangle'] = ((posDf['angle']+180)%360-180)*np.pi/180
 
     if plot:
         fig, ax = viz.plotTrajwithParameterandCondition(posDf, figsize=(10,5), parameter='angle')
@@ -65,12 +56,10 @@ def position(uvrDat, derive = True, rotate_by = None, filter_date = '2021-09-08'
 
     return posDf
 
-def posDerive(posDf):
-    posDf['ds'] = np.sqrt(posDf['dx']**2+posDf['dy']**2)
-    posDf['s'] = np.cumsum(posDf['ds'])
-    posDf['dTh'] = (np.diff(posDf['angle'],prepend=posDf['angle'].iloc[0]) + 180)%360 - 180
-    posDf['radangle'] = ((posDf['angle']+180)%360-180)*np.pi/180
-    return posDf
+
+def slip_position(uvrDat):
+    slipDf = uvrDat.slipDf
+    return slipDf
 
 #segment flight bouts
 def flightSeg(posDf, thresh, freq=120, plot = False, freq_content = 0.5, plotsave=False, saveDir=None, uvrDat=None):
@@ -177,3 +166,28 @@ def getTimeDf(uvrDat, trialDir, posDf = None, imaging = False, rate = 9.5509):
     timeDf = carryAttrs(timeDf,posDf)
     
     return timeDf
+
+
+def rotate_point(point, angle):
+    """
+    Rotate a point (x, y) counterclockwise by a given angle (in degrees) around the origin.
+    """
+    x, y = point
+    theta = np.radians(angle)
+    cos_theta = np.cos(theta)
+    sin_theta = np.sin(theta)
+    rotated_x = x * cos_theta - y * sin_theta
+    rotated_y = x * sin_theta + y * cos_theta
+    return rotated_x, rotated_y
+
+def rotate_trajectory(trajectory, angle):
+    """
+    Rotate a 2D trajectory (a list of points) counterclockwise by a given angle (in degrees) around the origin.
+    """
+    rotated_trajectory = []
+    for point in trajectory:
+        rotated_point = rotate_point(point, angle)
+        rotated_trajectory.append(rotated_point)
+    return rotated_trajectory
+
+

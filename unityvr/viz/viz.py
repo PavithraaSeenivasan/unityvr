@@ -183,7 +183,7 @@ def plotTraj(ax,xpos,ypos,param,size=5,unit="cm", cmap='twilight_shifted', limva
     return ax, cb
 
 
-def plotTrajwithParameterandCondition(df, figsize, parameter='angle',
+def plotTrajwithParameterandCondition(df, figsize, x_label='x', y_label='y', parameter='angle',
                                       condition=None,
                                       color = 'grey',
                                       mycmap = 'twilight_shifted',
@@ -208,8 +208,8 @@ def plotTrajwithParameterandCondition(df, figsize, parameter='angle',
         x_label='x_stitch'
         y_label='y_stitch'
     else:
-        x_label='x'
-        y_label='y'
+        x_label=x_label
+        y_label=y_label
 
     if plotOriginal:
         axs[0].plot(df[x_label]*df.dc2cm,df[y_label]*df.dc2cm,color=color, linewidth=0.5)
