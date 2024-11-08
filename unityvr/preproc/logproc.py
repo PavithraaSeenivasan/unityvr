@@ -206,6 +206,13 @@ def makeMetaDict(dat, fileName):
     else:
         ballRad = matching[0]["ficTracBallRadius"]
 
+    matching = [s for s in dat if "translationalGain" in s]
+    if len(matching) == 0:
+        print('No gain in metadata')
+        translationalGain = 1.0
+    else:
+        translationalGain = matching[0]["translationalGain"]
+
     matching = [s for s in dat if "refreshRateHz" in s]
     setFrameRate = matching[0]["refreshRateHz"]
 
@@ -219,6 +226,7 @@ def makeMetaDict(dat, fileName):
         'date': datestr,
         'time': timestr,
         'ballRad': ballRad,
+        'translationalGain' : translationalGain,
         'setFrameRate': setFrameRate,
         'notes': metadat[5],
         'angle_convention':"right-handed"
